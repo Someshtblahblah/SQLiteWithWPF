@@ -16,7 +16,6 @@ namespace GridViewDataTable
     {
         public ObservableCollection<TaskModel> Tasks { get; }
         public ICollectionView TasksView { get; }
-        public RelayCommand DeleteTaskCommand { get; }
         public RelayCommand DeleteSelectedTaskCommand { get; }
         public RelayCommand DeleteSelectedTasksCommand { get; private set; }
 
@@ -59,7 +58,6 @@ namespace GridViewDataTable
 
         public MyViewModel()
         {
-
             Tasks = new ObservableCollection<TaskModel>();
 
             var repo = new TaskRepository("Data Source=" + dbFilePath + ";");
@@ -67,24 +65,9 @@ namespace GridViewDataTable
                 Tasks.Add(task);
             TasksView = CollectionViewSource.GetDefaultView(Tasks);
 
-            DeleteTaskCommand = new RelayCommand(_ => DeleteSelectedTask(), _ => SelectedTask != null);
             DeleteSelectedTaskCommand = new RelayCommand(param => DeleteTask(param as TaskModel));
             DeleteSelectedTasksCommand = new RelayCommand(_ => DeleteSelectedTasks(),
-                                                          _ => SelectedTasks != null && SelectedTasks.Count > 0 );
-
-            // For filtering:
-            // TasksView.Filter = item => ((TaskModel)item).Name.Contains(FilterText);
-        }
-
-        private void DeleteSelectedTask()
-        {
-            if (SelectedTask == null) return;
-
-            var repo = new TaskRepository("Data Source=" + dbFilePath + ";");
-            repo.DeleteTask(SelectedTask.TaskOrder);
-
-            Tasks.Remove(SelectedTask);
-            SelectedTask = null;
+                                                          _ => SelectedTasks != null && SelectedTasks.Count > 0);
         }
 
         public void DeleteTask(TaskModel task)

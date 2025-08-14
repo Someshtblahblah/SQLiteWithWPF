@@ -1,11 +1,6 @@
 ﻿using System;
 using System.Collections;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using System.Windows;
-using GridViewDataTable.Models;
 using Telerik.Windows.Controls;
 
 namespace GridViewDataTable.Extensions
@@ -19,6 +14,9 @@ namespace GridViewDataTable.Extensions
                 typeof(RepositoryGridViewSelectionBehavior),
                 new PropertyMetadata(null, OnBindableSelectedItemsChanged));
 
+        // Static guard to prevent recursive updates
+        private static bool _isUpdating = false;
+
         public static IList GetBindableSelectedItems(DependencyObject obj) =>
             (IList)obj.GetValue(BindableSelectedItemsProperty);
 
@@ -30,28 +28,50 @@ namespace GridViewDataTable.Extensions
             var grid = d as RadGridView;
             if (grid == null) return;
 
-            grid.SelectedItems.Clear();
-            if (e.NewValue is IList newList)
-            {
-                foreach (var item in newList)
-                    grid.SelectedItems.Add(item);
-            }
+            if (_isUpdating)
+                return;
 
-            grid.SelectionChanged -= TasksGrid_SelectionChanged;
-            grid.SelectionChanged += TasksGrid_SelectionChanged;
+            _isUpdating = true;
+            try
+            {
+                grid.SelectedItems.Clear();
+                if (e.NewValue is IList newList)
+                {
+                    foreach (var item in newList)
+                        grid.SelectedItems.Add(item);
+                }
+
+                grid.SelectionChanged -= TasksGrid_SelectionChanged;
+                grid.SelectionChanged += TasksGrid_SelectionChanged;
+            }
+            finally
+            {
+                _isUpdating = false;
+            }
         }
 
-        private static void TasksGrid_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+        private static void TasksGrid_SelectionChanged(object sender, SelectionChangeEventArgs e)
         {
             var grid = sender as RadGridView;
             if (grid == null) return;
 
-            var bindableSelectedItems = GetBindableSelectedItems(grid);
-            if (bindableSelectedItems == null) return;
+            if (_isUpdating)
+                return;
 
-            bindableSelectedItems.Clear();
-            foreach (var item in grid.SelectedItems)
-                bindableSelectedItems.Add(item);
+            _isUpdating = true;
+            try
+            {
+                var bindableSelectedItems = GetBindableSelectedItems(grid);
+                if (bindableSelectedItems == null) return;
+
+                bindableSelectedItems.Clear();
+                foreach (var item in grid.SelectedItems)
+                    bindableSelectedItems.Add(item);
+            }
+            finally
+            {
+                _isUpdating = false;
+            }
         }
     }
 }
