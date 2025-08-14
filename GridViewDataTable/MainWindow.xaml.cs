@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Data;
 using System.Linq;
 using System.Text;
 using System.Windows;
@@ -11,10 +12,10 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Navigation;
 using System.Windows.Shapes;
-using Telerik.Windows.Data;
-using Telerik.Windows.Controls;
 using System.Windows.Threading;
-using System.Data;
+using GridViewDataTable.Models;
+using Telerik.Windows.Controls;
+using Telerik.Windows.Data;
 
 namespace GridViewDataTable
 {
@@ -32,6 +33,12 @@ namespace GridViewDataTable
             //timer.Tick += Timer_Tick;
 
             //this.Unloaded += (s, e) => this.Dispose();
+        }
+
+        private void TasksGrid_SelectionChanged(object sender, SelectionChangeEventArgs e)
+        {
+            var viewModel = (MyViewModel)this.DataContext;
+            viewModel.SelectedTasks = ((RadGridView)sender).SelectedItems.Cast<TaskModel>().ToList();
         }
 
         //public void Dispose()
