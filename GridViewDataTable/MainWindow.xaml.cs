@@ -41,6 +41,15 @@ namespace GridViewDataTable
             viewModel.SelectedTasks = ((RadGridView)sender).SelectedItems.Cast<TaskModel>().ToList();
         }
 
+        private void TasksGrid_Loaded(object sender, RoutedEventArgs e)
+        {
+            var grid = sender as Telerik.Windows.Controls.RadGridView;
+            if (grid != null)
+            {
+                grid.SelectedItems.Clear(); // This will clear any selection
+            }
+        }
+
         //public void Dispose()
         //{
         //    this.timer.Stop();
