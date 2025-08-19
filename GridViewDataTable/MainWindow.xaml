@@ -23,7 +23,6 @@
         <telerik:RadGridView x:Name="TasksGrid"
                              ItemsSource="{Binding TasksView}"
                              behaviors:RepositoryGridViewSelectionBehavior.BindableSelectedItems="{Binding SelectedTasks}"
-                             SelectionChanged="TasksGrid_SelectionChanged"
                              Loaded="TasksGrid_Loaded"
                              AutoGenerateColumns="False"
                              SelectionMode="Extended"

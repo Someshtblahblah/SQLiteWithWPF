@@ -18,16 +18,25 @@ namespace GridViewDataTable
         public ICollectionView TasksView { get; }
         public RelayCommand DeleteSelectedTaskCommand { get; }
         public RelayCommand DeleteSelectedTasksCommand { get; private set; }
+        public RelayCommand MoveUpCommand { get; }
+        public RelayCommand MoveDownCommand { get; }
 
-        private IList _selectedTasks;
-        public IList SelectedTasks
+        private ObservableCollection<TaskModel> _selectedTasks = new ObservableCollection<TaskModel>();
+        public ObservableCollection<TaskModel> SelectedTasks
         {
             get => _selectedTasks;
             set
             {
                 if (_selectedTasks != value)
                 {
+                    if (_selectedTasks != null)
+                        _selectedTasks.CollectionChanged -= SelectedTasks_CollectionChanged;
+
                     _selectedTasks = value;
+
+                    if (_selectedTasks != null)
+                        _selectedTasks.CollectionChanged += SelectedTasks_CollectionChanged;
+
                     PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(SelectedTasks)));
                     DeleteSelectedTasksCommand.RaiseCanExecuteChanged();
                 }
@@ -68,6 +77,12 @@ namespace GridViewDataTable
             DeleteSelectedTaskCommand = new RelayCommand(param => DeleteTask(param as TaskModel));
             DeleteSelectedTasksCommand = new RelayCommand(_ => DeleteSelectedTasks(),
                                                           _ => SelectedTasks != null && SelectedTasks.Count > 0);
+        }
+
+        private void SelectedTasks_CollectionChanged(object sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
+        {
+            DeleteSelectedTasksCommand.RaiseCanExecuteChanged();
+            // Add any additional logic for selection changes here
         }
 
         public void DeleteTask(TaskModel task)

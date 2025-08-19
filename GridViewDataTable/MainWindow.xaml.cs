@@ -35,12 +35,6 @@ namespace GridViewDataTable
             //this.Unloaded += (s, e) => this.Dispose();
         }
 
-        private void TasksGrid_SelectionChanged(object sender, SelectionChangeEventArgs e)
-        {
-            var viewModel = (MyViewModel)this.DataContext;
-            viewModel.SelectedTasks = ((RadGridView)sender).SelectedItems.Cast<TaskModel>().ToList();
-        }
-
         private void TasksGrid_Loaded(object sender, RoutedEventArgs e)
         {
             var grid = sender as Telerik.Windows.Controls.RadGridView;
