@@ -66,5 +66,13 @@ namespace GridViewDataTable.Models
                 }
             }
         }
+
+        //private void SaveTasksToDatabase()
+        //{
+        //    foreach (var task in Tasks)
+        //    {
+        //        repository.UpdateTaskOrder(task.Id, task.TaskOrder);
+        //    }
+        //}
     }
 }

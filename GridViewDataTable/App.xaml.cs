@@ -37,6 +37,10 @@ namespace GridViewDataTable
             {
                 DBManager.AddTask(dbFilePath, "WWWW" + i, "WWWW" + i, "WWWW" + i, "WWWW" + i, "WWWW" + i, "WWWW" + i);
             }
+            for (int i = 2; i <= 4; i++)
+            {
+                DBManager.AddTask(dbFilePath, "WWWW" + i, "WWWW" + i, "WWWW" + i, "WWWW" + i, "WWWW" + i, "WWWW" + i);
+            }
             for (int i = 1; i <= 8; i++)
             {
                 DBManager.AddTask(dbFilePath, "WWWW" + i, "WWWW" + i, "WWWW" + i, Environment.UserName, "WWWW" + i, "WWWW" + i);
