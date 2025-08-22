@@ -123,6 +123,8 @@ namespace GridViewDataTable
 
             var all = Tasks.ToList();
 
+            var previouslySelected = SelectedTasks.ToList();
+
             // Group selection by CreatedBy
             var byUser = SelectedTasks
                 .GroupBy(t => t.CreatedBy)
@@ -190,6 +192,18 @@ namespace GridViewDataTable
                     Tasks.Move(currentIdx, i);
             }
 
+            // To keep rows selected after moving
+            SelectedTasks.Clear();
+            foreach (var item in previouslySelected)
+            {
+                var stillExists = Tasks.FirstOrDefault(t =>
+                    t.TaskOrder == item.TaskOrder &&
+                    t.Source == item.Source &&
+                    t.CreatedBy == item.CreatedBy);
+                if (stillExists != null)
+                    SelectedTasks.Add(stillExists);
+            }
+
             UpdateTaskOrders();
         }
 
@@ -199,6 +213,8 @@ namespace GridViewDataTable
                 return;
 
             var all = Tasks.ToList();
+
+            var previouslySelected = SelectedTasks.ToList();
 
             // Group selection by CreatedBy
             var byUser = SelectedTasks
@@ -272,6 +288,18 @@ namespace GridViewDataTable
                     Tasks.Move(currentIdx, i);
             }
 
+            // To keep rows selected after moving
+            SelectedTasks.Clear();
+            foreach (var item in previouslySelected)
+            {
+                var stillExists = Tasks.FirstOrDefault(t =>
+                    t.TaskOrder == item.TaskOrder &&
+                    t.Source == item.Source &&
+                    t.CreatedBy == item.CreatedBy );
+                if (stillExists != null)
+                    SelectedTasks.Add(stillExists);
+            }
+
             UpdateTaskOrders();
         }
 
@@ -289,7 +317,8 @@ namespace GridViewDataTable
                     task.TaskOrder = order++;
                 }
             }
-            // Optionally: Save to DB here if needed
+            var repository= new TaskRepository("Data Source=" + dbFilePath + ";");
+            repository.UpdateTaskOrders(Tasks);
         }
 
         private bool CanMoveTasksUp()
@@ -324,13 +353,60 @@ namespace GridViewDataTable
             return false;
         }
 
-        private void SaveTasksToDatabase()
+        // Call this whenever you need to check if a task should be (re-)run for the current user
+        private void CheckTaskStatus()
         {
-            var repo = new TaskRepository("Data Source=" + dbFilePath + ";");
-            foreach (var task in Tasks)
+            var user = Environment.UserName; // or get from context
+            var userTasks = Tasks.Where(t => t.CreatedBy == user)
+                                 .OrderBy(t => t.TaskOrder)
+                                 .ToList();
+
+            if (userTasks.Count == 0)
             {
-                //repo.UpdateTaskOrder(task.Id, task.TaskOrder);
+                // No tasks for current user, nothing to run or pause
+                return;
             }
+
+            var topTask = userTasks.First();
+
+            // If lastRunTask is null or differs from the new top task, we need to switch
+            if (_lastRunTask == null || !AreTasksEquivalent(_lastRunTask, topTask))
+            {
+                if (_lastRunTask != null)
+                {
+                    PauseTask(_lastRunTask);
+                }
+                RunTask(topTask);
+                _lastRunTask = topTask;
+            }
+        }
+
+        // Store the last run task for the user
+        private TaskModel _lastRunTask = null;
+
+        // Compare tasks by unique fields (TaskOrder, Source, etc.)
+        private bool AreTasksEquivalent(TaskModel t1, TaskModel t2)
+        {
+            if (t1 == null || t2 == null) return false;
+            return t1.TaskOrder == t2.TaskOrder
+                && t1.Source == t2.Source
+                && t1.CreatedBy == t2.CreatedBy;
+            // Add more fields if needed for uniqueness
+        }
+
+        // Actual stub for RunTask
+        private void RunTask(TaskModel task)
+        {
+            // TODO: implement actual call to RunAgent with task.TaskOrder, task.Source, ...
+            // For now:
+            Console.WriteLine($"RunAgent({task.TaskOrder}, {task.Source}, ...)");
+        }
+
+        // Actual stub for PauseTask
+        private void PauseTask(TaskModel task)
+        {
+            // TODO: implement actual pause logic
+            Console.WriteLine($"PauseTask({task.TaskOrder}, {task.Source}, ...)");
         }
     }
 }

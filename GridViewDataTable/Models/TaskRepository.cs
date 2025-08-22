@@ -67,12 +67,27 @@ namespace GridViewDataTable.Models
             }
         }
 
-        //private void SaveTasksToDatabase()
-        //{
-        //    foreach (var task in Tasks)
-        //    {
-        //        repository.UpdateTaskOrder(task.Id, task.TaskOrder);
-        //    }
-        //}
+        public void UpdateTaskOrders(IEnumerable<TaskModel> tasks)
+        {
+            using (var connection = new SQLiteConnection(_connectionString))
+            {
+                connection.Open();
+                using (var transaction = connection.BeginTransaction())
+                {
+                    foreach (var task in tasks)
+                    {
+                        using (var cmd = new SQLiteCommand(
+                            "UPDATE Tasks SET TaskOrder = @TaskOrder WHERE CreatedBy = @CreatedBy AND Source = @Source", connection))
+                        {
+                            cmd.Parameters.AddWithValue("@TaskOrder", task.TaskOrder);
+                            cmd.Parameters.AddWithValue("@CreatedBy", task.CreatedBy);
+                            cmd.Parameters.AddWithValue("@Source", task.Source);
+                            cmd.ExecuteNonQuery();
+                        }
+                    }
+                    transaction.Commit();
+                }
+            }
+        }
     }
 }
