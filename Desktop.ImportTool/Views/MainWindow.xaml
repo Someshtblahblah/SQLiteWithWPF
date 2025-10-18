@@ -13,30 +13,25 @@
     <Window.DataContext>
         <viewmodels:MainWindowViewModel/>
     </Window.DataContext>
+
+    <Window.Resources>
+        <DataTemplate DataType="{x:Type viewmodels:PaneViewModel}">
+            <telerik:RadPane Header="{Binding Header}" CanUserClose="False">
+                <ContentControl Content="{Binding Content}"/>
+            </telerik:RadPane>
+        </DataTemplate>
+    </Window.Resources>
+
     <Grid>
         <DockPanel LastChildFill="True">
             <Border Background="#393939" Height="48" DockPanel.Dock="Top">
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="10,0,0,0" Height="48">
-                    <!--<Button Style="{StaticResource DarkThemeIconButton}" ToolTip="Tasks View" Margin="0,0,8,0">
-                    <Path StrokeThickness="2.6"
-                          Stroke="White"
-                          StrokeStartLineCap="Round"
-                          StrokeEndLineCap="Round"
-                          StrokeLineJoin="Round"
-                          Fill="Transparent"
-                          Data="M4,8 L20,8 M4,12 L20,12 M4,16 L20,16"
-                          Width="21" Height="21"/>
-                </Button>
-                <Button Style="{StaticResource DarkThemeIconButton}" ToolTip="History View" Margin="0,0,8,0">
-                    <Path StrokeThickness="2.6"
-                          Stroke="White"
-                          StrokeStartLineCap="Round"
-                          StrokeEndLineCap="Round"
-                          StrokeLineJoin="Round"
-                          Fill="Transparent"
-                          Data="M12,4 A8,8 0 1 1 4,12"
-                          Width="21" Height="21"/>
-                </Button>-->
+                    <Button Content="Tasks"
+                            Command="{Binding ToggleTasksPaneCommand}"
+                            Margin="0,0,8,0"/>
+                    <Button Content="History"
+                            Command="{Binding ToggleHistoryPaneCommand}"
+                            Margin="0,0,8,0"/>
                     <Button Style="{StaticResource DarkThemeIconButton}" ToolTip="Add Task" Margin="0,0,8,0"
                         Command="{Binding AddTaskCommand}">
                         <Path StrokeThickness="2.6"
@@ -73,18 +68,20 @@
                 </StackPanel>
             </Border>
 
-            <telerik:RadDocking x:Name="MainDocking" telerik:StyleManager.Theme="Expression_Dark">
+            <telerik:RadDocking x:Name="MainDocking">
                 <telerik:RadDocking.DocumentHost>
                     <telerik:RadSplitContainer>
-                        <telerik:RadPaneGroup>
+                        <telerik:RadPaneGroup ItemsSource="{Binding OpenPanes}">
                             <telerik:RadPane Header="Tasks" telerik:RadDocking.SerializationTag="TasksPane"
-                            IsSelected="{Binding IsTasksSelected, Mode=TwoWay}">
+                                             Visibility="{Binding IsTasksVisible, Converter={StaticResource BoolToVis}}"
+                                             IsSelected="{Binding IsTasksSelected, Mode=TwoWay}">
                                 <ContentControl Content="{Binding TasksView}"/>
                             </telerik:RadPane>
                         </telerik:RadPaneGroup>
                         <telerik:RadPaneGroup>
                             <telerik:RadPane Header="History" telerik:RadDocking.SerializationTag="HistoryPane"
-                            IsSelected="{Binding IsHistorySelected, Mode=TwoWay}">
+                                             Visibility="{Binding IsHistoryVisible, Converter={StaticResource BoolToVis}}"
+                                             IsSelected="{Binding IsHistorySelected, Mode=TwoWay}">
                                 <ContentControl Content="{Binding HistoryView}"/>
                             </telerik:RadPane>
                         </telerik:RadPaneGroup>

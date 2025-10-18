@@ -121,6 +121,7 @@
       <SubType>Designer</SubType>
     </ApplicationDefinition>
     <Compile Include="Behaviors\GridViewSelectionBehavior.cs" />
+    <Compile Include="Converters\BoolToVisConverter.cs" />
     <Compile Include="Converters\StatusToButtonEnabledConverter.cs" />
     <Compile Include="Infrastructure\RelayCommand.cs" />
     <Compile Include="Models\TaskModel.cs" />
