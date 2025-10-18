@@ -73,7 +73,7 @@
                 </StackPanel>
             </Border>
 
-            <telerik:RadDocking x:Name="MainDocking">
+            <telerik:RadDocking x:Name="MainDocking" telerik:StyleManager.Theme="Expression_Dark">
                 <telerik:RadDocking.DocumentHost>
                     <telerik:RadSplitContainer>
                         <telerik:RadPaneGroup>
