@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Linq;
 using System.Windows.Controls;
@@ -10,27 +9,6 @@ using Desktop.ImportTool.Views;
 
 namespace Desktop.ImportTool.ViewModels
 {
-    public class PaneViewModel : INotifyPropertyChanged
-    {
-        private string _header;
-        private object _content;
-
-        public string Header
-        {
-            get => _header;
-            set { _header = value; OnPropertyChanged(nameof(Header)); }
-        }
-
-        public object Content
-        {
-            get => _content;
-            set { _content = value; OnPropertyChanged(nameof(Content)); }
-        }
-
-        public event PropertyChangedEventHandler PropertyChanged;
-        protected void OnPropertyChanged(string propertyName)
-            => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
-    }
     public class MainWindowViewModel : INotifyPropertyChanged
     {
         private readonly string dbFilePath = "C:\\ProgramData\\Cinegy\\Cinegy Convert\\CinegyImportTool.db";
@@ -44,14 +22,6 @@ namespace Desktop.ImportTool.ViewModels
         public ICommand FinishTaskCommand { get; }
         public ICommand FailTaskCommand { get; }
         public ICommand AddTaskCommand { get; }
-
-        public ObservableCollection<PaneViewModel> OpenPanes { get; } = new ObservableCollection<PaneViewModel>();
-
-        public ICommand ToggleTasksPaneCommand { get; }
-        public ICommand ToggleHistoryPaneCommand { get; }
-
-        private readonly PaneViewModel _tasksPane;
-        private readonly PaneViewModel _historyPane;
 
         private bool _isTasksSelected = true;
         public bool IsTasksSelected
@@ -69,15 +39,6 @@ namespace Desktop.ImportTool.ViewModels
 
         public MainWindowViewModel()
         {
-            _tasksPane = new PaneViewModel { Header = "Tasks", Content = new TasksView() };
-            _historyPane = new PaneViewModel { Header = "History", Content = new HistoryView() };
-
-            OpenPanes.Add(_tasksPane);
-            OpenPanes.Add(_historyPane);
-
-            ToggleTasksPaneCommand = new RelayCommand(_ => TogglePane(_tasksPane));
-            ToggleHistoryPaneCommand = new RelayCommand(_ => TogglePane(_historyPane));
-
             manager = new DBManager(dbFilePath);
             TasksVM = new TasksViewModel();
             HistoryVM = new HistoryViewModel();
@@ -89,14 +50,6 @@ namespace Desktop.ImportTool.ViewModels
             FinishTaskCommand = new RelayCommand(_ => FinishTask());
             FailTaskCommand = new RelayCommand(_ => FailTask());
             AddTaskCommand = new RelayCommand(_ => AddTask());
-        }
-
-        private void TogglePane(PaneViewModel pane)
-        {
-            if (OpenPanes.Contains(pane))
-                OpenPanes.Remove(pane);
-            else
-                OpenPanes.Add(pane);
         }
 
         private void FinishTask()
