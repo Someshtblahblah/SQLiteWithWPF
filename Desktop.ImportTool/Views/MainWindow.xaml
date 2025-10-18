@@ -14,14 +14,8 @@
         <viewmodels:MainWindowViewModel/>
     </Window.DataContext>
     <Grid>
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/>
-            <!-- For toolbar -->
-            <RowDefinition Height="*"/>
-            <!-- For docking area -->
-        </Grid.RowDefinitions>
         <DockPanel LastChildFill="True">
-            <Border Grid.Row="0" Background="#393939" Height="48" DockPanel.Dock="Top">
+            <Border Background="#393939" Height="48" DockPanel.Dock="Top">
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="10,0,0,0" Height="48">
                     <!--<Button Style="{StaticResource DarkThemeIconButton}" ToolTip="Tasks View" Margin="0,0,8,0">
                     <Path StrokeThickness="2.6"
@@ -79,21 +73,23 @@
                 </StackPanel>
             </Border>
 
-            <telerik:RadDocking x:Name="MainDocking" Grid.Row="1">
-                <telerik:RadSplitContainer>
-                    <telerik:RadPaneGroup>
-                        <telerik:RadPane Header="Tasks" telerik:RadDocking.SerializationTag="TasksPane"
+            <telerik:RadDocking x:Name="MainDocking">
+                <telerik:RadDocking.DocumentHost>
+                    <telerik:RadSplitContainer>
+                        <telerik:RadPaneGroup>
+                            <telerik:RadPane Header="Tasks" telerik:RadDocking.SerializationTag="TasksPane"
                             IsSelected="{Binding IsTasksSelected, Mode=TwoWay}">
-                            <ContentControl Content="{Binding TasksView}"/>
-                        </telerik:RadPane>
-                    </telerik:RadPaneGroup>
-                    <telerik:RadPaneGroup>
-                        <telerik:RadPane Header="History" telerik:RadDocking.SerializationTag="HistoryPane"
+                                <ContentControl Content="{Binding TasksView}"/>
+                            </telerik:RadPane>
+                        </telerik:RadPaneGroup>
+                        <telerik:RadPaneGroup>
+                            <telerik:RadPane Header="History" telerik:RadDocking.SerializationTag="HistoryPane"
                             IsSelected="{Binding IsHistorySelected, Mode=TwoWay}">
-                            <ContentControl Content="{Binding HistoryView}"/>
-                        </telerik:RadPane>
-                    </telerik:RadPaneGroup>
-                </telerik:RadSplitContainer>
+                                <ContentControl Content="{Binding HistoryView}"/>
+                            </telerik:RadPane>
+                        </telerik:RadPaneGroup>
+                    </telerik:RadSplitContainer>
+                    </telerik:RadDocking.DocumentHost>
             </telerik:RadDocking>
         </DockPanel>
     </Grid>

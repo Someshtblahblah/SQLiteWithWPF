@@ -141,6 +141,10 @@
     <Compile Include="Views\TasksView.xaml.cs">
       <DependentUpon>TasksView.xaml</DependentUpon>
     </Compile>
+    <Page Include="Themes\DarkDockingTabs.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
     <Page Include="Themes\StatusTemplates.xaml">
       <SubType>Designer</SubType>
       <Generator>MSBuild:Compile</Generator>

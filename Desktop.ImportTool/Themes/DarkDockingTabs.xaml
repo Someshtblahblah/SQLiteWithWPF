@@ -1,0 +1,42 @@
+﻿<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:telerik="http://schemas.telerik.com/2008/xaml/presentation">
+
+    <!-- Colors for strong contrast -->
+    <Color x:Key="DockTabBackgroundColor">#393939</Color>
+    <Color x:Key="DockTabSelectedColor">#545454</Color>
+    <Color x:Key="DockTabBorderColor">#AAAAAA</Color>
+    <Color x:Key="DockTabForegroundColor">#FFFFFF</Color>
+    <Color x:Key="DockTabContentColor">#232323</Color>
+
+    <SolidColorBrush x:Key="DockTabBackgroundBrush" Color="{StaticResource DockTabBackgroundColor}" />
+    <SolidColorBrush x:Key="DockTabSelectedBrush" Color="{StaticResource DockTabSelectedColor}" />
+    <SolidColorBrush x:Key="DockTabBorderBrush" Color="{StaticResource DockTabBorderColor}" />
+    <SolidColorBrush x:Key="DockTabForegroundBrush" Color="{StaticResource DockTabForegroundColor}" />
+    <SolidColorBrush x:Key="DockTabContentBrush" Color="{StaticResource DockTabContentColor}" />
+
+    <!-- Style for RadPane tabs (tab headers) -->
+    <Style TargetType="telerik:RadPane">
+        <Setter Property="Background" Value="{StaticResource DockTabBackgroundBrush}" />
+        <Setter Property="Foreground" Value="{StaticResource DockTabForegroundBrush}" />
+        <Setter Property="BorderBrush" Value="{StaticResource DockTabBorderBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="FontWeight" Value="Bold"/>
+        <!-- DO NOT set Template here, let Telerik's default show header text -->
+    </Style>
+
+    <!-- Style for selected tab -->
+    <Style TargetType="telerik:RadPane" x:Key="SelectedRadPaneStyle" BasedOn="{StaticResource {x:Type telerik:RadPane}}">
+        <Setter Property="Background" Value="{StaticResource DockTabSelectedBrush}" />
+        <Setter Property="Foreground" Value="{StaticResource DockTabForegroundBrush}" />
+        <Setter Property="FontWeight" Value="Bold"/>
+    </Style>
+
+    <!-- Style for RadPaneGroup (the tab content area) -->
+    <Style TargetType="telerik:RadPaneGroup">
+        <Setter Property="Background" Value="{StaticResource DockTabContentBrush}" />
+        <Setter Property="BorderBrush" Value="{StaticResource DockTabBorderBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="Padding" Value="6"/>
+    </Style>
+</ResourceDictionary>
