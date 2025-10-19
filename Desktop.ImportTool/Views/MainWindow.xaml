@@ -17,14 +17,6 @@
         <DockPanel LastChildFill="True">
             <Border Background="#393939" Height="48" DockPanel.Dock="Top">
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="10,0,0,0" Height="48">
-                    <ToggleButton Content="Tasks"
-                        IsChecked="{Binding IsTasksVisible, Mode=TwoWay}"
-                        Command="{Binding ToggleTasksCommand}"
-                        Margin="0,0,8,0"/>
-                    <ToggleButton Content="History"
-                        IsChecked="{Binding IsHistoryVisible, Mode=TwoWay}"
-                        Command="{Binding ToggleHistoryCommand}"
-                        Margin="0,0,16,0"/>
                     <!--<Button Style="{StaticResource DarkThemeIconButton}" ToolTip="Tasks View" Margin="0,0,8,0">
                     <Path StrokeThickness="2.6"
                           Stroke="White"
@@ -86,17 +78,13 @@
                     <telerik:RadSplitContainer>
                         <telerik:RadPaneGroup>
                             <telerik:RadPane Header="Tasks" telerik:RadDocking.SerializationTag="TasksPane"
-                            IsSelected="{Binding IsTasksSelected, Mode=TwoWay}"
-                                             IsHidden="{Binding IsTasksVisible, Converter={StaticResource BoolToHiddenConverter}}"
-                            CanUserClose="False">
+                            IsSelected="{Binding IsTasksSelected, Mode=TwoWay}">
                                 <ContentControl Content="{Binding TasksView}"/>
                             </telerik:RadPane>
                         </telerik:RadPaneGroup>
                         <telerik:RadPaneGroup>
                             <telerik:RadPane Header="History" telerik:RadDocking.SerializationTag="HistoryPane"
-                            IsSelected="{Binding IsHistorySelected, Mode=TwoWay}"
-                                             IsHidden="{Binding IsHistoryVisible, Converter={StaticResource BoolToHiddenConverter}}"
-                            CanUserClose="False">
+                            IsSelected="{Binding IsHistorySelected, Mode=TwoWay}">
                                 <ContentControl Content="{Binding HistoryView}"/>
                             </telerik:RadPane>
                         </telerik:RadPaneGroup>

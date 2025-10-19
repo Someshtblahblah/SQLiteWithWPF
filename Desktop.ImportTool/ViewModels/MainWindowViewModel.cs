@@ -38,21 +38,6 @@ namespace Desktop.ImportTool.ViewModels
             set { _isHistorySelected = value; OnPropertyChanged(nameof(IsHistorySelected)); }
         }
 
-        private bool _isTasksVisible = true;
-        private bool _isHistoryVisible = true;
-
-        public bool IsTasksVisible
-        {
-            get => _isTasksVisible;
-            set { _isTasksVisible = value; OnPropertyChanged(); }
-        }
-
-        public bool IsHistoryVisible
-        {
-            get => _isHistoryVisible;
-            set { _isHistoryVisible = value; OnPropertyChanged(); }
-        }
-
         public ICommand ToggleTasksCommand { get; }
         public ICommand ToggleHistoryCommand { get; }
 
@@ -65,9 +50,6 @@ namespace Desktop.ImportTool.ViewModels
             // Pass those instances as DataContext for the views
             TasksView = new TasksView();       // replace with your actual view or UserControl
             HistoryView = new HistoryView();
-
-            ToggleTasksCommand = new RelayCommand(_ => IsTasksVisible = !IsTasksVisible);
-            ToggleHistoryCommand = new RelayCommand(_ => IsHistoryVisible = !IsHistoryVisible);
 
             FinishTaskCommand = new RelayCommand(_ => FinishTask());
             FailTaskCommand = new RelayCommand(_ => FailTask());
