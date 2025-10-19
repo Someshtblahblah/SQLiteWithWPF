@@ -3,14 +3,12 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:telerik="http://schemas.telerik.com/2008/xaml/presentation"
              xmlns:local="clr-namespace:Desktop.ImportTool"
-             xmlns:converters="clr-namespace:Desktop.ImportTool.Converters"
              StartupUri="Views\MainWindow.xaml">
     <Application.Resources>
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>
                 <ResourceDictionary Source="Themes/Styles.xaml"/>
             </ResourceDictionary.MergedDictionaries>
-            <converters:BoolToHiddenConverter x:Key="BoolToHiddenConverter"/>
         </ResourceDictionary>
     </Application.Resources>
 </Application>

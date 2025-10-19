@@ -1,7 +1,6 @@
 ﻿using System;
 using System.ComponentModel;
 using System.Linq;
-using System.Runtime.CompilerServices;
 using System.Windows.Controls;
 using System.Windows.Input;
 using Desktop.ImportTool.Infrastructure;
@@ -37,9 +36,6 @@ namespace Desktop.ImportTool.ViewModels
             get => _isHistorySelected;
             set { _isHistorySelected = value; OnPropertyChanged(nameof(IsHistorySelected)); }
         }
-
-        public ICommand ToggleTasksCommand { get; }
-        public ICommand ToggleHistoryCommand { get; }
 
         public MainWindowViewModel()
         {
@@ -126,7 +122,9 @@ namespace Desktop.ImportTool.ViewModels
         }
 
         public event PropertyChangedEventHandler PropertyChanged;
-        protected void OnPropertyChanged([CallerMemberName] string propertyName = null)
-            => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+        protected void OnPropertyChanged(string propertyName)
+        {
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+        }
     }
 }
