@@ -3,7 +3,7 @@ using System.Globalization;
 using System.Windows.Data;
 using Desktop.ImportTool.Models;
 
-namespace ImportTool.Converters
+namespace Desktop.ImportTool.Converters
 {
     public class StatusToButtonEnabledConverter : IValueConverter
     {

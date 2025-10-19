@@ -1,6 +1,8 @@
-﻿using System.ComponentModel;
+﻿using System;
+using System.ComponentModel;
 using System.IO;
 using System.Windows;
+using Desktop.ImportTool.ViewModels;
 
 namespace Desktop.ImportTool.Views
 {
