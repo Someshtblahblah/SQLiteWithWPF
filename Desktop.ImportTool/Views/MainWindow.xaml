@@ -19,6 +19,14 @@
         <DockPanel LastChildFill="True">
             <Border Background="#393939" Height="48" DockPanel.Dock="Top">
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="10,0,0,0" Height="48">
+                    <Button Content="Tasks" Margin="2" Padding="6,2"
+                    Command="{Binding OpenTasksPaneCommand}"/>
+                    <Button Content="History" Margin="2" Padding="6,2"
+                    Command="{Binding OpenHistoryPaneCommand}"/>
+                    <!--<telerik:RadToggleButton x:Name="ExplorerMenuItem"
+                         IsChecked="{Binding ViewStateExplorer, Mode=TwoWay}">
+                        Tasks
+                    </telerik:RadToggleButton>-->
                     <!--<Button Style="{StaticResource DarkThemeIconButton}" ToolTip="Tasks View" Margin="0,0,8,0">
                     <Path StrokeThickness="2.6"
                           Stroke="White"
@@ -75,7 +83,17 @@
                 </StackPanel>
             </Border>
 
-            <telerik:RadDocking x:Name="MainDocking">
+            <!-- Main docking control. Keep name MainDocking because code-behind references it. -->
+            <telerik:RadDocking x:Name="MainDocking" Margin="0">
+                <telerik:RadDocking.DocumentHost>
+                <telerik:RadSplitContainer>
+                    <!-- tools pane group - we'll add Tasks/History panes here when user invokes VM commands -->
+                    <telerik:RadPaneGroup x:Name="ToolsPaneGroup" Width="320"/>
+                </telerik:RadSplitContainer>
+                </telerik:RadDocking.DocumentHost>
+
+            </telerik:RadDocking>
+            <!--<telerik:RadDocking x:Name="MainDocking">
                 <telerik:RadDocking.DocumentHost>
                     <telerik:RadSplitContainer>
                         <telerik:RadPaneGroup>
@@ -92,7 +110,7 @@
                         </telerik:RadPaneGroup>
                     </telerik:RadSplitContainer>
                 </telerik:RadDocking.DocumentHost>
-            </telerik:RadDocking>
+            </telerik:RadDocking>-->
         </DockPanel>
     </Grid>
 </Window>

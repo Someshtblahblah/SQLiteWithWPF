@@ -38,20 +38,34 @@ namespace Desktop.ImportTool.ViewModels
             set { _isHistorySelected = value; OnPropertyChanged(nameof(IsHistorySelected)); }
         }
 
+        // VM-level commands to request panes (MVVM)
+        public ICommand OpenTasksPaneCommand { get; }
+        public ICommand OpenHistoryPaneCommand { get; }
 
-        public MainWindowViewModel()
+        private readonly IDockingService _dockingService;
+
+        public MainWindowViewModel() : this(null) { }
+
+        // Preferred ctor: inject docking service (provided by View)
+        public MainWindowViewModel(IDockingService dockingService)
         {
+            _dockingService = dockingService;
+
             manager = new DBManager(dbFilePath);
             TasksVM = new TasksViewModel();
             HistoryVM = new HistoryViewModel();
 
-            // Pass those instances as DataContext for the views
-            TasksView = new TasksView();       // replace with your actual view or UserControl
-            HistoryView = new HistoryView();
+            // VM creates view instances and sets their DataContext
+            TasksView = new TasksView { DataContext = TasksVM };
+            HistoryView = new HistoryView { DataContext = HistoryVM };
 
             FinishTaskCommand = new RelayCommand(_ => FinishTask());
             FailTaskCommand = new RelayCommand(_ => FailTask());
             AddTaskCommand = new RelayCommand(_ => AddTask());
+
+            // Commands call docking service (view-layer). If no service provided, they do nothing.
+            OpenTasksPaneCommand = new RelayCommand(_ => _dockingService?.OpenPane("Tasks"));
+            OpenHistoryPaneCommand = new RelayCommand(_ => _dockingService?.OpenPane("History"));
         }
 
         private void FinishTask()
