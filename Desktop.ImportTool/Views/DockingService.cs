@@ -2,42 +2,27 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Windows;
-using System.Windows.Controls;
-using Telerik.Windows.Controls;
-using Telerik.Windows.Controls.Docking;
 using Desktop.ImportTool.Infrastructure;
 using Desktop.ImportTool.ViewModels;
+using Telerik.Windows.Controls;
+using Telerik.Windows.Controls.Docking;
 
 namespace Desktop.ImportTool.Views
 {
-    /// <summary>
-    /// View-layer implementation of IDockingService.
-    /// Compatible with older Telerik versions (e.g. 2016) and C# 7.3.
-    /// - Reuses VM-created view instances (vm.TasksView / vm.HistoryView)
-    /// - Calls TasksVM.LoadTasks() / HistoryVM.LoadHistory() before showing
-    /// - Validates stored pane references by checking whether they are still present in the RadDocking tree
-    ///   (robust against users moving panes between groups)
-    /// </summary>
     public class DockingService : IDockingService
     {
         private readonly Window _owner;
         private readonly RadDocking _docking;
         private readonly RadPaneGroup _toolsGroup;
 
-        // store active pane references by key
         private readonly Dictionary<string, RadPane> _panes = new Dictionary<string, RadPane>(StringComparer.OrdinalIgnoreCase);
-
-        // store last placement info if you want to restore later (kept simple)
         private readonly Dictionary<string, PlacementInfo> _lastPlacement = new Dictionary<string, PlacementInfo>(StringComparer.OrdinalIgnoreCase);
 
         public DockingService(Window owner, RadDocking docking, RadPaneGroup toolsGroup)
         {
-            if (owner == null) throw new ArgumentNullException(nameof(owner));
-            if (docking == null) throw new ArgumentNullException(nameof(docking));
-
-            _owner = owner;
-            _docking = docking;
-            _toolsGroup = toolsGroup; // may be null - we fallback to first found group
+            _owner = owner ?? throw new ArgumentNullException(nameof(owner));
+            _docking = docking ?? throw new ArgumentNullException(nameof(docking));
+            _toolsGroup = toolsGroup;
         }
 
         public void OpenPane(string paneKey)
@@ -46,239 +31,211 @@ namespace Desktop.ImportTool.Views
             var vm = _owner.DataContext as MainWindowViewModel;
             if (vm == null) return;
 
-            // Refresh underlying VM data before showing
-            if (paneKey.Equals("Tasks", StringComparison.OrdinalIgnoreCase))
-            {
-                if (vm.TasksVM != null) vm.TasksVM.LoadTasks();
-            }
-            else if (paneKey.Equals("History", StringComparison.OrdinalIgnoreCase))
-            {
-                if (vm.HistoryVM != null) vm.HistoryVM.LoadHistory();
-            }
+            if (paneKey.Equals("Tasks", StringComparison.OrdinalIgnoreCase)) vm.TasksVM?.LoadTasks();
+            if (paneKey.Equals("History", StringComparison.OrdinalIgnoreCase)) vm.HistoryVM?.LoadHistory();
 
-            // Get the view instance from VM
-            object viewInstance = null;
-            if (paneKey.Equals("Tasks", StringComparison.OrdinalIgnoreCase))
-                viewInstance = vm.TasksView;
-            else if (paneKey.Equals("History", StringComparison.OrdinalIgnoreCase))
-                viewInstance = vm.HistoryView;
-
+            object viewInstance = paneKey.Equals("Tasks", StringComparison.OrdinalIgnoreCase) ? vm.TasksView
+                                 : paneKey.Equals("History", StringComparison.OrdinalIgnoreCase) ? vm.HistoryView
+                                 : null;
             if (viewInstance == null) return;
 
-            // If we have a stored pane reference, validate that it is still part of the docking control.
-            RadPane storedPane;
-            if (_panes.TryGetValue(paneKey, out storedPane) && storedPane != null)
+            // 1) existing pane by content
+            var byContent = FindPaneByContent(viewInstance);
+            if (byContent != null)
             {
-                if (IsPaneInDocking(storedPane))
-                {
-                    // stored pane is valid => select it
-                    SelectPane(storedPane);
-                    return;
-                }
-
-                // stored pane is not present in docking (it was closed/removed) => clear stored ref
-                _panes[paneKey] = null;
-                storedPane = null;
-            }
-
-            // Try to find an existing pane in the layout that hosts the same view instance
-            var found = FindPaneByContent(viewInstance);
-            if (found != null)
-            {
-                _panes[paneKey] = found;
-                SelectPane(found);
+                MovePaneToPreferredGroupIfNeeded(byContent, paneKey);
+                _panes[paneKey] = byContent;
+                SelectPane(byContent);
                 return;
             }
 
-            // Create new RadPane and add it to a host group
-            var pane = new RadPane
+            // 2) find canonical pane by tag/header (prefer keeper selection)
+            var byTag = FindCanonicalPaneByTagOrHeader(paneKey);
+            if (byTag != null)
             {
-                Header = paneKey,
-                Content = viewInstance,
-                CanUserClose = true
-            };
-
-            // Optionally capture placement when closing (we do not rely on per-group handlers anymore).
-            // We'll store placement when we add it (index) in case you need it later.
-            RadPaneGroup hostGroup = ResolveHostGroupForOpen(paneKey);
-            if (hostGroup == null) throw new InvalidOperationException("No RadPaneGroup found to host panes.");
-
-            // Insert at stored index if available
-            PlacementInfo placement;
-            if (_lastPlacement.TryGetValue(paneKey, out placement) && placement != null && placement.Group != null)
-            {
-                // Validate the stored group is still part of this docking
-                if (IsPaneGroupInDocking(placement.Group) && placement.Index >= 0 && placement.Index <= hostGroup.Items.Count)
-                {
-                    hostGroup.Items.Insert(Math.Min(placement.Index, hostGroup.Items.Count), pane);
-                }
-                else
-                {
-                    hostGroup.Items.Add(pane);
-                }
-            }
-            else
-            {
-                hostGroup.Items.Add(pane);
+                try { if (!object.ReferenceEquals(byTag.Content, viewInstance)) byTag.Content = viewInstance; } catch { }
+                MovePaneToPreferredGroupIfNeeded(byTag, paneKey);
+                _panes[paneKey] = byTag;
+                SelectPane(byTag);
+                return;
             }
 
-            // store reference
+            // 3) otherwise create a new pane
+            var pane = new RadPane { Header = paneKey, Content = viewInstance, CanUserClose = true };
+            try { RadDocking.SetSerializationTag(pane, paneKey); } catch { }
+
+            var hostGroup = ResolveHostGroupForOpen(paneKey) ?? CreateNewPaneGroupAtStart();
+            if (hostGroup == null) throw new InvalidOperationException("No RadPaneGroup to host panes.");
+
+            try { hostGroup.Items.Insert(0, pane); } catch { try { hostGroup.Items.Add(pane); } catch { } }
+
             _panes[paneKey] = pane;
-
-            // Select it
             SelectPane(pane);
         }
 
-        /// <summary>
-        /// Checks whether the given pane instance is currently present inside any RadPaneGroup within the RadDocking control.
-        /// </summary>
-        private bool IsPaneInDocking(RadPane pane)
+        private RadPaneGroup CreateNewPaneGroupAtStart()
         {
-            if (pane == null) return false;
-
-            // If parent is a RadPaneGroup and that group is part of docking -> consider it present.
-            var parent = pane.Parent as RadPaneGroup;
-            if (parent != null && IsPaneGroupInDocking(parent))
+            try
             {
-                // additionally verify it's contained in group's Items
-                try
+                var split = _docking.GetAllChildren().OfType<RadSplitContainer>().FirstOrDefault();
+                if (split == null)
                 {
-                    return parent.Items.OfType<object>().Any(i => object.ReferenceEquals(i, pane));
+                    split = new RadSplitContainer();
+                    try { _docking.Items.Add(split); } catch { }
                 }
-                catch
-                {
-                    // best-effort: if Items access fails, still return false
-                    return false;
-                }
+                var created = new RadPaneGroup();
+                try { split.Items.Insert(0, created); } catch { try { split.Items.Add(created); } catch { } }
+                return created;
             }
-
-            // Otherwise search all groups for reference equality (definitive)
-            var groups = _docking.GetAllChildren().OfType<RadPaneGroup>();
-            foreach (var g in groups)
-            {
-                try
-                {
-                    if (g.Items.OfType<object>().Any(i => object.ReferenceEquals(i, pane)))
-                        return true;
-                }
-                catch
-                {
-                    // ignore failures and continue
-                }
-            }
-
-            return false;
+            catch { return null; }
         }
 
-        /// <summary>
-        /// Verifies whether a RadPaneGroup belongs to the current RadDocking visual/logical tree.
-        /// </summary>
-        private bool IsPaneGroupInDocking(RadPaneGroup group)
+        // Canonical pane selection: prefer named XAML pane in named group, then non-hidden, then first.
+        private RadPane FindCanonicalPaneByTagOrHeader(string paneKey)
         {
-            if (group == null) return false;
-            var groups = _docking.GetAllChildren().OfType<RadPaneGroup>();
-            foreach (var g in groups)
+            if (string.IsNullOrWhiteSpace(paneKey)) return null;
+            try
             {
-                if (object.ReferenceEquals(g, group)) return true;
+                var panes = _docking.GetAllChildren().OfType<RadPane>().Where(p =>
+                {
+                    try
+                    {
+                        var tag = (RadDocking.GetSerializationTag(p) ?? p.Header)?.ToString() ?? string.Empty;
+                        var hdr = (p.Header ?? string.Empty).ToString() ?? string.Empty;
+                        return string.Equals(tag, paneKey, StringComparison.OrdinalIgnoreCase)
+                            || string.Equals(hdr, paneKey, StringComparison.OrdinalIgnoreCase);
+                    }
+                    catch { return false; }
+                }).ToList();
+
+                if (!panes.Any()) return null;
+
+                // 1) prefer XAML-named pane inside named group
+                try
+                {
+                    var namedPane = _owner?.FindName(paneKey + "Pane") as RadPane;
+                    var namedGroup = _owner?.FindName(paneKey + "PaneGroup") as RadPaneGroup;
+                    if (namedPane != null && namedGroup != null)
+                    {
+                        if (panes.Any(p => object.ReferenceEquals(p, namedPane) && p.Parent is RadPaneGroup parent && object.ReferenceEquals(parent, namedGroup)))
+                            return panes.First(p => object.ReferenceEquals(p, namedPane));
+                    }
+                }
+                catch { }
+
+                // 2) prefer first non-hidden
+                var nonHidden = panes.FirstOrDefault(p =>
+                {
+                    try { return !p.IsHidden; } catch { return true; }
+                });
+                if (nonHidden != null) return nonHidden;
+
+                // 3) fallback first
+                return panes.First();
             }
-            return false;
-        }
-
-        private RadPaneGroup ResolveHostGroupForOpen(string paneKey)
-        {
-            // Prefer configured tools group
-            if (_toolsGroup != null) return _toolsGroup;
-
-            // If we previously stored a placement and the group is still part of this docking, use it
-            PlacementInfo placement;
-            if (_lastPlacement.TryGetValue(paneKey, out placement) && placement != null && placement.Group != null)
-            {
-                if (IsPaneGroupInDocking(placement.Group))
-                    return placement.Group;
-                _lastPlacement.Remove(paneKey);
-            }
-
-            // fallback: first pane group in docking
-            var first = _docking.GetAllChildren().OfType<RadPaneGroup>().FirstOrDefault();
-            return first;
+            catch { }
+            return null;
         }
 
         private RadPane FindPaneByContent(object content)
         {
             if (content == null) return null;
-
-            // Search in the tools group first (if present)
-            if (_toolsGroup != null)
+            try
             {
-                try
+                var groups = _docking.GetAllChildren().OfType<RadPaneGroup>();
+                foreach (var g in groups)
                 {
-                    var p = _toolsGroup.Items.OfType<RadPane>().FirstOrDefault(x => object.ReferenceEquals(x.Content, content));
-                    if (p != null) return p;
-                }
-                catch
-                {
-                    // ignore
+                    try
+                    {
+                        var p = g.Items.OfType<RadPane>().FirstOrDefault(x => object.ReferenceEquals(x.Content, content));
+                        if (p != null) return p;
+                    }
+                    catch { }
                 }
             }
-
-            // Search all pane groups inside the docking control
-            var groups = _docking.GetAllChildren().OfType<RadPaneGroup>();
-            foreach (var group in groups)
-            {
-                try
-                {
-                    var p = group.Items.OfType<RadPane>().FirstOrDefault(x => object.ReferenceEquals(x.Content, content));
-                    if (p != null) return p;
-                }
-                catch
-                {
-                    // ignore and continue
-                }
-            }
-
+            catch { }
             return null;
+        }
+
+        private void MovePaneToPreferredGroupIfNeeded(RadPane pane, string paneKey)
+        {
+            if (pane == null || string.IsNullOrWhiteSpace(paneKey)) return;
+            try
+            {
+                RadPaneGroup preferred = null;
+                if (_owner != null)
+                {
+                    preferred = _owner.FindName(paneKey + "PaneGroup") as RadPaneGroup;
+                    if (preferred != null)
+                    {
+                        var groups = _docking.GetAllChildren().OfType<RadPaneGroup>();
+                        if (!groups.Any(g => object.ReferenceEquals(g, preferred))) preferred = null;
+                    }
+                }
+
+                if (preferred != null)
+                {
+                    var current = pane.Parent as RadPaneGroup;
+                    if (!object.ReferenceEquals(current, preferred))
+                    {
+                        try { current?.Items.Remove(pane); } catch { }
+                        try { preferred.Items.Insert(0, pane); } catch { try { preferred.Items.Add(pane); } catch { } }
+                        try { RadDocking.SetSerializationTag(pane, paneKey); } catch { }
+                    }
+                }
+            }
+            catch { }
         }
 
         private void SelectPane(RadPane pane)
         {
             if (pane == null) return;
-
-            // Selecting the pane is enough to bring it into view in Telerik 2016.
             pane.IsSelected = true;
+            try { (pane as FrameworkElement)?.BringIntoView(); } catch { }
+        }
 
-            // Try BringIntoView as a best-effort to ensure it becomes visible.
+        private RadPaneGroup ResolveHostGroupForOpen(string paneKey)
+        {
             try
             {
-                var fe = pane as FrameworkElement;
-                if (fe != null) fe.BringIntoView();
+                if (_owner != null)
+                {
+                    var named = _owner.FindName(paneKey + "PaneGroup") as RadPaneGroup;
+                    if (named != null)
+                    {
+                        if (_docking.GetAllChildren().OfType<RadPaneGroup>().Any(g => object.ReferenceEquals(g, named)))
+                            return named;
+                    }
+                }
+
+                var groups = _docking.GetAllChildren().OfType<RadPaneGroup>();
+                foreach (var g in groups)
+                {
+                    try
+                    {
+                        var has = g.Items.OfType<RadPane>().Any(p =>
+                        {
+                            var tag = (RadDocking.GetSerializationTag(p) ?? p.Header)?.ToString() ?? string.Empty;
+                            var hdr = (p.Header ?? string.Empty).ToString() ?? string.Empty;
+                            return string.Equals(tag, paneKey, StringComparison.OrdinalIgnoreCase)
+                                || string.Equals(hdr, paneKey, StringComparison.OrdinalIgnoreCase);
+                        });
+                        if (has) return g;
+                    }
+                    catch { }
+                }
+
+                if (_lastPlacement.TryGetValue(paneKey, out var placement) && placement != null && placement.Group != null)
+                {
+                    if (_docking.GetAllChildren().OfType<RadPaneGroup>().Any(g => object.ReferenceEquals(g, placement.Group)))
+                        return placement.Group;
+                }
             }
-            catch
-            {
-                // ignore if BringIntoView fails
-            }
+            catch { }
+
+            return _docking.GetAllChildren().OfType<RadPaneGroup>().FirstOrDefault();
         }
 
-        // Simple class used instead of tuple to be C#7.3-friendly
-        private class PlacementInfo
-        {
-            public RadPaneGroup Group;
-            public int Index;
-        }
-    }
-
-    // helper to traverse logical tree (compatible with Telerik 2016)
-    internal static class DockingExtensions
-    {
-        public static IEnumerable<System.Windows.DependencyObject> GetAllChildren(this System.Windows.DependencyObject parent)
-        {
-            if (parent == null) yield break;
-            var children = LogicalTreeHelper.GetChildren(parent).OfType<System.Windows.DependencyObject>().ToList();
-            foreach (var child in children)
-            {
-                yield return child;
-                foreach (var desc in GetAllChildren(child))
-                    yield return desc;
-            }
-        }
+        private class PlacementInfo { public RadPaneGroup Group; public int Index; }
     }
 }

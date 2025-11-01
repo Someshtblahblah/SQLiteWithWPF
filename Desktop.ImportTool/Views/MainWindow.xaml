@@ -11,9 +11,9 @@
         Title="MainWindow"
         Background="#2D2D2D"
 >
-    <Window.DataContext>
+    <!--<Window.DataContext>
         <viewmodels:MainWindowViewModel/>
-    </Window.DataContext>
+    </Window.DataContext>-->
 
     <Grid>
         <DockPanel LastChildFill="True">
@@ -83,15 +83,24 @@
                 </StackPanel>
             </Border>
 
-            <!-- Main docking control. Keep name MainDocking because code-behind references it. -->
             <telerik:RadDocking x:Name="MainDocking" Margin="0">
                 <telerik:RadDocking.DocumentHost>
-                <telerik:RadSplitContainer>
-                    <!-- tools pane group - we'll add Tasks/History panes here when user invokes VM commands -->
-                    <telerik:RadPaneGroup x:Name="ToolsPaneGroup" Width="320"/>
-                </telerik:RadSplitContainer>
+                    <telerik:RadSplitContainer>
+                        <telerik:RadPaneGroup x:Name="TasksPaneGroup" HorizontalAlignment="Stretch" >
+                            <!-- Empty content intentionally (RestorePaneContents will replace it with the VM-created UserControl instance) -->
+                            <telerik:RadPane x:Name="TasksPane"
+                                         Header="Tasks"
+                                         telerik:RadDocking.SerializationTag="Tasks"
+                                         IsSelected="{Binding IsTasksSelected, Mode=TwoWay}"/>
+                        </telerik:RadPaneGroup>
+                        <telerik:RadPaneGroup x:Name="HistoryPaneGroup" HorizontalAlignment="Stretch">
+                            <telerik:RadPane x:Name="HistoryPane"
+                                         Header="History"
+                                         telerik:RadDocking.SerializationTag="History"
+                                         IsSelected="{Binding IsHistorySelected, Mode=TwoWay}"/>
+                        </telerik:RadPaneGroup>
+                    </telerik:RadSplitContainer>
                 </telerik:RadDocking.DocumentHost>
-
             </telerik:RadDocking>
             <!--<telerik:RadDocking x:Name="MainDocking">
                 <telerik:RadDocking.DocumentHost>

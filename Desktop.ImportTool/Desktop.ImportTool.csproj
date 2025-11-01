@@ -132,6 +132,7 @@
     </Compile>
     <Compile Include="ViewModels\HistoryViewModel.cs" />
     <Compile Include="ViewModels\MainWindowViewModel.cs" />
+    <Compile Include="Views\DockingExtensions.cs" />
     <Compile Include="Views\DockingService.cs" />
     <Compile Include="Views\HistoryView.xaml.cs">
       <DependentUpon>HistoryView.xaml</DependentUpon>
