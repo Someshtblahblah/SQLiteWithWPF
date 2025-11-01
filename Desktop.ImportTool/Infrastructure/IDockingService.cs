@@ -1,16 +1,31 @@
-﻿namespace Desktop.ImportTool.Infrastructure
+﻿// url= (create/replace this file in your project at Desktop.ImportTool/Infrastructure/IDockingService.cs)
+using System;
+
+namespace Desktop.ImportTool.Infrastructure
 {
-    /// <summary>
-    /// VM-facing abstraction to request opening/activating panes.
-    /// Implementations live in the Views layer and use RadDocking / RadPane.
-    /// </summary>
+    // Simple event args to notify when a pane opens/closes
+    public class PaneStateChangedEventArgs : EventArgs
+    {
+        public string PaneKey { get; }
+        public bool IsOpen { get; }
+
+        public PaneStateChangedEventArgs(string paneKey, bool isOpen)
+        {
+            PaneKey = paneKey;
+            IsOpen = isOpen;
+        }
+    }
+
+    // Minimal docking service interface used by the VM.
+    // We add IsPaneOpen and a PaneStateChanged event so the VM can disable commands.
     public interface IDockingService
     {
-        /// <summary>
-        /// Open or activate pane identified by key (e.g. "Tasks" or "History").
-        /// Implementations should reuse view instances that the VM created and recreate panes if they were closed.
-        /// </summary>
-        /// <param name="paneKey">Key identifying the pane to open.</param>
         void OpenPane(string paneKey);
+
+        // Returns true if a pane for the given key currently exists (docked or undocked).
+        bool IsPaneOpen(string paneKey);
+
+        // Raised when a pane is opened or closed. PaneKey is the key (e.g. "Tasks" / "History"), IsOpen indicates open state.
+        event EventHandler<PaneStateChangedEventArgs> PaneStateChanged;
     }
 }

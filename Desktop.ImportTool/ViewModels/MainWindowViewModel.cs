@@ -63,11 +63,25 @@ namespace Desktop.ImportTool.ViewModels
             FailTaskCommand = new RelayCommand(_ => FailTask());
             AddTaskCommand = new RelayCommand(_ => AddTask());
 
-            // Commands call docking service (view-layer). If no service provided, they do nothing.
-            OpenTasksPaneCommand = new RelayCommand(_ => _dockingService?.OpenPane("Tasks"));
-            OpenHistoryPaneCommand = new RelayCommand(_ => _dockingService?.OpenPane("History"));
-        }
+            // Open commands: CanExecute returns false when pane already open.
+            OpenTasksPaneCommand = new RelayCommand(_ => _dockingService?.OpenPane("Tasks"),
+                                                    _ => !(_dockingService?.IsPaneOpen("Tasks") ?? false));
 
+            OpenHistoryPaneCommand = new RelayCommand(_ => _dockingService?.OpenPane("History"),
+                                                      _ => !(_dockingService?.IsPaneOpen("History") ?? false));
+
+            // Subscribe to PaneStateChanged to update command enabled state when panes open/close.
+            if (_dockingService != null)
+            {
+                _dockingService.PaneStateChanged += (s, e) =>
+                {
+                    // When pane state changes, refresh the commands' CanExecute.
+                    // RelayCommand has RaiseCanExecuteChanged used elsewhere in repo.
+                    (OpenTasksPaneCommand as RelayCommand)?.RaiseCanExecuteChanged();
+                    (OpenHistoryPaneCommand as RelayCommand)?.RaiseCanExecuteChanged();
+                };
+            }
+        }
         private void FinishTask()
         {
 
