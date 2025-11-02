@@ -31,11 +31,11 @@ namespace Desktop.ImportTool.Views
 
         private void MainWindow_Loaded(object sender, RoutedEventArgs e)
         {
-            // We no longer rely on RadDocking.LoadLayout. Instead load our simple layout and
-            // build the docking tree deterministically.
+            // We no longer rely on RadDocking.LoadLayout for persistence. Use our simple layout.
             Dispatcher.BeginInvoke(new Action(() =>
             {
-                try { LoadSimpleLayoutAndRestorePanes(); } catch { RestorePaneContents(); } // fallback to existing restore
+                try { DeduplicateLayout(); } catch { }
+                try { LoadSimpleLayoutAndRestorePanes(); } catch { RestorePaneContents(); }
                 try { MainDocking.UpdateLayout(); } catch { }
             }), DispatcherPriority.Loaded);
         }
@@ -44,18 +44,19 @@ namespace Desktop.ImportTool.Views
         {
             try
             {
-                // Make sure panes are attached and logical tree is stable
+                // Make sure logical tree is stabilized and we dedupe before save
+                try { DeduplicateLayout(); } catch { }
                 try { RestorePaneContents(); } catch { }
                 try { MainDocking.UpdateLayout(); } catch { }
 
-                // Persist our small, deterministic layout (not the Telerik XML)
+                // Persist our small layout: open flags and indices
                 try { SaveSimpleLayout(); } catch { }
             }
             catch { }
         }
 
-        // ---------- NEW SIMPLE LAYOUT PERSISTENCE ----------
-        // A tiny human-editable file format:
+        // ---------- SIMPLE LAYOUT PERSISTENCE ----------
+        // Format:
         // TasksIndex=0
         // TasksOpen=1
         // HistoryIndex=1
@@ -65,54 +66,47 @@ namespace Desktop.ImportTool.Views
         {
             try
             {
-                // Determine group index (within first RadSplitContainer) for Tasks and History
                 var split = MainDocking.GetAllChildren().OfType<RadSplitContainer>().FirstOrDefault();
                 var groupsInSplit = split?.Items.OfType<RadPaneGroup>().ToList() ?? MainDocking.GetAllChildren().OfType<RadPaneGroup>().ToList();
 
-                int? tasksIndex = null, historyIndex = null;
                 bool tasksOpen = false, historyOpen = false;
+                int? tasksIndex = null, historyIndex = null;
 
-                // find canonical panes
-                var tasksPane = FindPaneByTagOrHeader("Tasks");
-                var historyPane = FindPaneByTagOrHeader("History");
+                var tasksPane = FindAnyPaneByKey("Tasks");
+                var historyPane = FindAnyPaneByKey("History");
 
                 if (tasksPane != null)
                 {
                     tasksOpen = true;
                     var parent = tasksPane.Parent as RadPaneGroup;
-                    if (parent != null)
-                        tasksIndex = groupsInSplit.IndexOf(parent);
+                    if (parent != null) tasksIndex = groupsInSplit.IndexOf(parent);
                 }
 
                 if (historyPane != null)
                 {
                     historyOpen = true;
                     var parent = historyPane.Parent as RadPaneGroup;
-                    if (parent != null)
-                        historyIndex = groupsInSplit.IndexOf(parent);
+                    if (parent != null) historyIndex = groupsInSplit.IndexOf(parent);
                 }
 
-                // Default indices if missing: tasks->0, history->1
-                var lines = new List<string>();
-                lines.Add($"TasksIndex={(tasksIndex.HasValue ? tasksIndex.Value.ToString() : "0")}");
-                lines.Add($"TasksOpen={(tasksOpen ? "1" : "0")}");
-                lines.Add($"HistoryIndex={(historyIndex.HasValue ? historyIndex.Value.ToString() : "1")}");
-                lines.Add($"HistoryOpen={(historyOpen ? "1" : "0")}");
+                var lines = new List<string>
+                {
+                    $"TasksIndex={(tasksIndex.HasValue ? tasksIndex.Value.ToString() : "0")}",
+                    $"TasksOpen={(tasksOpen ? "1" : "0")}",
+                    $"HistoryIndex={(historyIndex.HasValue ? historyIndex.Value.ToString() : "1")}",
+                    $"HistoryOpen={(historyOpen ? "1" : "0")}"
+                };
 
                 File.WriteAllLines(PersistFile, lines);
             }
-            catch
-            {
-                // ignore persistence errors
-            }
+            catch { /* ignore persistence errors */ }
         }
 
         private void LoadSimpleLayoutAndRestorePanes()
         {
-            // Step 1: dedupe existing RadDocking content (in case there are leftovers)
+            // Deduplicate in case there are leftover duplicates.
             try { DeduplicateLayout(); } catch { }
 
-            // Step 2: read persisted file if exists
             int tasksIndex = 0, historyIndex = 1;
             bool tasksOpen = true, historyOpen = true;
             if (File.Exists(PersistFile))
@@ -132,10 +126,10 @@ namespace Desktop.ImportTool.Views
                         if (string.Equals(key, "HistoryOpen", StringComparison.OrdinalIgnoreCase)) historyOpen = val == "1";
                     }
                 }
-                catch { }
+                catch { /* ignore parse errors */ }
             }
 
-            // Step 3: ensure we have at least one RadSplitContainer and enough PaneGroups
+            // Ensure split and enough groups exist
             var split = MainDocking.GetAllChildren().OfType<RadSplitContainer>().FirstOrDefault();
             if (split == null)
             {
@@ -143,7 +137,6 @@ namespace Desktop.ImportTool.Views
                 try { MainDocking.Items.Add(split); } catch { }
             }
 
-            // Ensure we have at least max(tasksIndex,historyIndex)+1 groups
             int neededGroups = Math.Max(tasksIndex, historyIndex) + 1;
             for (int i = 0; i < neededGroups; i++)
             {
@@ -154,73 +147,106 @@ namespace Desktop.ImportTool.Views
                 }
             }
 
-            // Get the groups array (current state)
             var groupsList = split.Items.OfType<RadPaneGroup>().ToList();
-
-            // Step 4: attach panes according to the saved data (or defaults)
             var vm = DataContext as MainWindowViewModel;
             if (vm == null) return;
 
-            // Helper to get or create canonical pane for key
-            RadPane EnsureSinglePaneInGroup(string key, RadPaneGroup targetGroup, object contentView)
+            // Helper to remove all panes for a key (used when persisted Open=false)
+            void RemoveAllPanesForKey(string key)
             {
-                // Find any existing pane globally by tag/header
-                var existing = FindPaneByTagOrHeader(key);
-                if (existing != null)
+                try
                 {
-                    // move into targetGroup if needed
-                    try
+                    var matches = MainDocking.GetAllChildren().OfType<RadPane>().Where(p =>
                     {
-                        var currentParent = existing.Parent as RadPaneGroup;
-                        if (!object.ReferenceEquals(currentParent, targetGroup))
+                        var t = (RadDocking.GetSerializationTag(p) ?? p.Header)?.ToString() ?? string.Empty;
+                        var h = (p.Header ?? string.Empty).ToString() ?? string.Empty;
+                        return string.Equals(t, key, StringComparison.OrdinalIgnoreCase) || string.Equals(h, key, StringComparison.OrdinalIgnoreCase);
+                    }).ToList();
+
+                    foreach (var extra in matches)
+                    {
+                        try { if (extra.Parent is RadPaneGroup pg) pg.Items.Remove(extra); } catch { }
+                    }
+                }
+                catch { }
+            }
+
+            // If persisted closed, ensure no placeholder exists for that key
+            if (!tasksOpen) RemoveAllPanesForKey("Tasks");
+            if (!historyOpen) RemoveAllPanesForKey("History");
+
+            // Now for each pane that should be open, ensure exactly one canonical pane exists and attach VM view.
+            // TASKS
+            if (tasksOpen)
+            {
+                try
+                {
+                    // Try to find an existing canonical pane
+                    var existing = FindCanonicalPaneByTagOrHeader("Tasks");
+
+                    if (existing != null)
+                    {
+                        // Attach VM view instance to it (ensures it's not empty)
+                        if (!object.ReferenceEquals(existing.Content, vm.TasksView))
+                            existing.Content = vm.TasksView;
+                        TrySetSerializationTag(existing, "Tasks");
+
+                        // Move into saved group if available; otherwise keep where it was
+                        var targetGroup = groupsList.ElementAtOrDefault(tasksIndex) ?? groupsList.First();
+                        MovePaneToGroupIfNotAlready(existing, targetGroup, "Tasks");
+                    }
+                    else
+                    {
+                        // Not found: create exactly one placeholder in target group and attach content
+                        var tg = groupsList.ElementAtOrDefault(tasksIndex) ?? groupsList.First();
+                        var newPane = this.FindName("TasksPane") as RadPane ?? new RadPane { Header = "Tasks", CanUserClose = true };
+                        if (!object.ReferenceEquals(newPane.Content, vm.TasksView))
+                            newPane.Content = vm.TasksView;
+                        TrySetSerializationTag(newPane, "Tasks");
+                        if (!tg.Items.OfType<object>().Any(x => object.ReferenceEquals(x, newPane)))
                         {
-                            try { currentParent?.Items.Remove(existing); } catch { }
-                            try { targetGroup.Items.Insert(0, existing); } catch { try { targetGroup.Items.Add(existing); } catch { } }
+                            try { tg.Items.Insert(0, newPane); } catch { try { tg.Items.Add(newPane); } catch { } }
                         }
                     }
-                    catch { }
-
-                    // attach content
-                    try { if (!object.ReferenceEquals(existing.Content, contentView)) existing.Content = contentView; } catch { }
-                    TrySetSerializationTag(existing, key);
-                    return existing;
                 }
-
-                // Not found -> create exactly one placeholder and add to targetGroup
-                var newPane = new RadPane { Header = key, CanUserClose = true };
-                TrySetSerializationTag(newPane, key);
-                try { newPane.Content = contentView; } catch { }
-                try { targetGroup.Items.Insert(0, newPane); } catch { try { targetGroup.Items.Add(newPane); } catch { } }
-                return newPane;
+                catch { }
             }
 
-            try
+            // HISTORY
+            if (historyOpen)
             {
-                // Tasks
-                if (tasksOpen)
+                try
                 {
-                    var tg = groupsList.ElementAtOrDefault(tasksIndex) ?? groupsList.First();
-                    EnsureSinglePaneInGroup("Tasks", tg, vm.TasksView);
-                }
+                    var existing = FindCanonicalPaneByTagOrHeader("History");
 
-                // History
-                if (historyOpen)
-                {
-                    var hg = groupsList.ElementAtOrDefault(historyIndex) ?? groupsList.ElementAtOrDefault(1) ?? groupsList.First();
-                    EnsureSinglePaneInGroup("History", hg, vm.HistoryView);
+                    if (existing != null)
+                    {
+                        if (!object.ReferenceEquals(existing.Content, vm.HistoryView))
+                            existing.Content = vm.HistoryView;
+                        TrySetSerializationTag(existing, "History");
+
+                        var targetGroup = groupsList.ElementAtOrDefault(historyIndex) ?? (groupsList.Count > 1 ? groupsList[1] : groupsList.First());
+                        MovePaneToGroupIfNotAlready(existing, targetGroup, "History");
+                    }
+                    else
+                    {
+                        var hg = groupsList.ElementAtOrDefault(historyIndex) ?? (groupsList.Count > 1 ? groupsList[1] : groupsList.First());
+                        var newPane = this.FindName("HistoryPane") as RadPane ?? new RadPane { Header = "History", CanUserClose = true };
+                        if (!object.ReferenceEquals(newPane.Content, vm.HistoryView))
+                            newPane.Content = vm.HistoryView;
+                        TrySetSerializationTag(newPane, "History");
+                        if (!hg.Items.OfType<object>().Any(x => object.ReferenceEquals(x, newPane)))
+                        {
+                            try { hg.Items.Insert(0, newPane); } catch { try { hg.Items.Add(newPane); } catch { } }
+                        }
+                    }
                 }
-            }
-            catch
-            {
-                // on any error fallback to a simpler restore
-                RestorePaneContents();
+                catch { }
             }
         }
 
-        // ---------- SMALL REUSE HELPERS (kept compatible with earlier attempts) ----------
-
-        // Find a pane (any) by serialization tag or header
-        private RadPane FindPaneByTagOrHeader(string paneKey)
+        // Find any pane with matching tag/header (first found)
+        private RadPane FindAnyPaneByKey(string paneKey)
         {
             try
             {
@@ -242,7 +268,7 @@ namespace Desktop.ImportTool.Views
             return null;
         }
 
-        // Attach VM-created view instances to any panes that exist (defensive fallback)
+        // RestorePaneContents kept as defensive fallback (attach VM views to any restored panes)
         private void RestorePaneContents()
         {
             var vm = DataContext as MainWindowViewModel;
@@ -279,7 +305,55 @@ namespace Desktop.ImportTool.Views
             catch { }
         }
 
-        // Deduplicate duplicates created by Telerik serialization
+        // Add this method inside the MainWindow class (near other helper methods)
+        private RadPane FindCanonicalPaneByTagOrHeader(string paneKey)
+        {
+            if (string.IsNullOrWhiteSpace(paneKey)) return null;
+
+            try
+            {
+                var panes = MainDocking.GetAllChildren().OfType<RadPane>().Where(p =>
+                {
+                    try
+                    {
+                        var tag = (RadDocking.GetSerializationTag(p) ?? p.Header)?.ToString() ?? string.Empty;
+                        var hdr = (p.Header ?? string.Empty).ToString() ?? string.Empty;
+                        return string.Equals(tag, paneKey, StringComparison.OrdinalIgnoreCase)
+                            || string.Equals(hdr, paneKey, StringComparison.OrdinalIgnoreCase);
+                    }
+                    catch { return false; }
+                }).ToList();
+
+                if (!panes.Any()) return null;
+
+                // 1) prefer XAML-named pane inside named group
+                try
+                {
+                    var namedPane = this.FindName(paneKey + "Pane") as RadPane;
+                    var namedGroup = this.FindName(paneKey + "PaneGroup") as RadPaneGroup;
+                    if (namedPane != null && namedGroup != null)
+                    {
+                        if (panes.Any(p => object.ReferenceEquals(p, namedPane) && p.Parent is RadPaneGroup parent && object.ReferenceEquals(parent, namedGroup)))
+                            return panes.First(p => object.ReferenceEquals(p, namedPane));
+                    }
+                }
+                catch { }
+
+                // 2) prefer first non-hidden pane
+                var nonHidden = panes.FirstOrDefault(p =>
+                {
+                    try { return !p.IsHidden; } catch { return true; }
+                });
+                if (nonHidden != null) return nonHidden;
+
+                // 3) fallback: first
+                return panes.First();
+            }
+            catch { }
+            return null;
+        }
+
+        // Deduplicate panes with same tag/header, keeping one canonical instance
         private void DeduplicateLayout()
         {
             try
@@ -334,6 +408,20 @@ namespace Desktop.ImportTool.Views
         private static void TrySetSerializationTag(RadPane pane, string tag)
         {
             try { RadDocking.SetSerializationTag(pane, tag); } catch { }
+        }
+
+        private void MovePaneToGroupIfNotAlready(RadPane pane, RadPaneGroup targetGroup, string tag)
+        {
+            try
+            {
+                if (pane == null || targetGroup == null) return;
+                var currentParent = pane.Parent as RadPaneGroup;
+                if (object.ReferenceEquals(currentParent, targetGroup)) return;
+                try { currentParent?.Items.Remove(pane); } catch { }
+                try { targetGroup.Items.Insert(0, pane); } catch { try { targetGroup.Items.Add(pane); } catch { } }
+                TrySetSerializationTag(pane, tag);
+            }
+            catch { }
         }
     }
 }
