@@ -1,16 +1,16 @@
-﻿// url= (replace your current DockingService.cs with this file)
+﻿// url=https://github.com/TestAIAcc/SQLiteWithWPF/blob/main/Desktop.ImportTool/Views/DockingService.cs
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Windows;
-using System.Windows.Controls;
+using System.Windows.Threading;
 using Telerik.Windows.Controls;
 using Telerik.Windows.Controls.Docking;
 using Desktop.ImportTool.Infrastructure;
 
 namespace Desktop.ImportTool.Views
 {
-    public class DockingService : IDockingService
+    public class DockingService : IDockingService, IDisposable
     {
         private readonly Window _owner;
         private readonly RadDocking _docking;
@@ -19,42 +19,79 @@ namespace Desktop.ImportTool.Views
         private readonly Dictionary<string, RadPane> _panes = new Dictionary<string, RadPane>(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, PlacementInfo> _lastPlacement = new Dictionary<string, PlacementInfo>(StringComparer.OrdinalIgnoreCase);
 
+        // Monitoring timer to detect open/close changes robustly.
+        private readonly DispatcherTimer _stateTimer;
+        private readonly Dictionary<string, bool> _lastIsOpen = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+        private readonly string[] _paneKeys = new[] { "Tasks", "History" };
+
         public DockingService(Window owner, RadDocking docking, RadPaneGroup toolsGroup)
         {
             _owner = owner ?? throw new ArgumentNullException(nameof(owner));
             _docking = docking ?? throw new ArgumentNullException(nameof(docking));
             _toolsGroup = toolsGroup;
+
+            // Initialize last-known open state for monitored panes
+            foreach (var k in _paneKeys) _lastIsOpen[k] = false;
+
+            // Start a timer to monitor pane presence across docked/floating containers.
+            _stateTimer = new DispatcherTimer(DispatcherPriority.Background)
+            {
+                Interval = TimeSpan.FromMilliseconds(500)
+            };
+            _stateTimer.Tick += StateTimer_Tick;
+            // Initialize state immediately
+            UpdatePaneStatesAndRaiseIfChanged();
+            _stateTimer.Start();
         }
 
-        // IDockingService event
         public event EventHandler<PaneStateChangedEventArgs> PaneStateChanged;
+
+        private void StateTimer_Tick(object sender, EventArgs e)
+        {
+            UpdatePaneStatesAndRaiseIfChanged();
+        }
+
+        private void UpdatePaneStatesAndRaiseIfChanged()
+        {
+            try
+            {
+                foreach (var key in _paneKeys)
+                {
+                    bool isOpen = false;
+                    try { isOpen = IsPaneOpen(key); } catch { isOpen = false; }
+
+                    if (!_lastIsOpen.TryGetValue(key, out var last) || last != isOpen)
+                    {
+                        _lastIsOpen[key] = isOpen;
+                        try { PaneStateChanged?.Invoke(this, new PaneStateChangedEventArgs(key, isOpen)); } catch { }
+                    }
+                }
+            }
+            catch { /* swallow monitoring errors */ }
+        }
 
         public void OpenPane(string paneKey)
         {
             if (string.IsNullOrWhiteSpace(paneKey)) return;
-            var vm = _owner.DataContext as dynamic; // avoid strong coupling here
+
+            var vm = _owner.DataContext as dynamic; // loose coupling
             if (vm == null) return;
 
-            // refresh VM data (best-effort)
+            // Refresh underlying VM data before showing
             try
             {
-                if (paneKey.Equals("Tasks", StringComparison.OrdinalIgnoreCase))
-                    vm.TasksVM?.LoadTasks();
-                else if (paneKey.Equals("History", StringComparison.OrdinalIgnoreCase))
-                    vm.HistoryVM?.LoadHistory();
+                if (paneKey.Equals("Tasks", StringComparison.OrdinalIgnoreCase)) vm.TasksVM?.LoadTasks();
+                else if (paneKey.Equals("History", StringComparison.OrdinalIgnoreCase)) vm.HistoryVM?.LoadHistory();
             }
-            catch { /* ignore */ }
+            catch { }
 
-            // Get the VM-created view instance
             object viewInstance = null;
             try
             {
-                if (paneKey.Equals("Tasks", StringComparison.OrdinalIgnoreCase))
-                    viewInstance = vm.TasksView;
-                else if (paneKey.Equals("History", StringComparison.OrdinalIgnoreCase))
-                    viewInstance = vm.HistoryView;
+                if (paneKey.Equals("Tasks", StringComparison.OrdinalIgnoreCase)) viewInstance = vm.TasksView;
+                else if (paneKey.Equals("History", StringComparison.OrdinalIgnoreCase)) viewInstance = vm.HistoryView;
             }
-            catch { /* ignore */ }
+            catch { }
 
             if (viewInstance == null) return;
 
@@ -72,60 +109,59 @@ namespace Desktop.ImportTool.Views
                 storedPane = null;
             }
 
-            // 1) Try find a pane that already hosts the same VM view instance
+            // 1) Try to find existing pane by content
             var foundByContent = FindPaneByContent(viewInstance);
             if (foundByContent != null)
             {
                 MovePaneToPreferredGroupIfNeeded(foundByContent, paneKey);
+                AttachCloseWatcher(foundByContent, paneKey);
                 _panes[paneKey] = foundByContent;
                 SelectPane(foundByContent);
                 RaisePaneStateChanged(paneKey, true);
                 return;
             }
 
-            // 2) Try find an existing serialized/restored pane by tag/header
-            var foundByTag = FindCanonicalPaneByTagOrHeader(paneKey);
-            if (foundByTag != null)
+            // 2) Try to find canonical pane by tag/header
+            var byTag = FindCanonicalPaneByTagOrHeader(paneKey);
+            if (byTag != null)
             {
-                try { if (!object.ReferenceEquals(foundByTag.Content, viewInstance)) foundByTag.Content = viewInstance; } catch { }
-                MovePaneToPreferredGroupIfNeeded(foundByTag, paneKey);
-                AttachCloseWatcher(foundByTag, paneKey);
-                _panes[paneKey] = foundByTag;
-                SelectPane(foundByTag);
+                try { if (!object.ReferenceEquals(byTag.Content, viewInstance)) byTag.Content = viewInstance; } catch { }
+                MovePaneToPreferredGroupIfNeeded(byTag, paneKey);
+                AttachCloseWatcher(byTag, paneKey);
+                _panes[paneKey] = byTag;
+                SelectPane(byTag);
                 RaisePaneStateChanged(paneKey, true);
                 return;
             }
 
-            // 3) Create a new pane and add to a resolved group
+            // 3) Create new pane and insert
             var pane = new RadPane { Header = paneKey, Content = viewInstance, CanUserClose = true };
             try { RadDocking.SetSerializationTag(pane, paneKey); } catch { }
 
             AttachCloseWatcher(pane, paneKey);
 
-            var host = ResolveHostGroupForOpen(paneKey) ?? CreateNewPaneGroupAtStart();
-            if (host == null) throw new InvalidOperationException("No RadPaneGroup found to host panes.");
+            var hostGroup = ResolveHostGroupForOpen(paneKey) ?? CreateNewPaneGroupAtStart();
+            if (hostGroup == null) throw new InvalidOperationException("No RadPaneGroup found to host panes.");
 
-            try { host.Items.Insert(0, pane); } catch { try { host.Items.Add(pane); } catch { } }
+            try { hostGroup.Items.Insert(0, pane); } catch { try { hostGroup.Items.Add(pane); } catch { } }
 
             _panes[paneKey] = pane;
             RaisePaneStateChanged(paneKey, true);
             SelectPane(pane);
         }
 
-        // Return true if a pane for paneKey exists in any known place (docked or undocked).
-        // This is used by the VM to disable the Open command when the pane is already open.
         public bool IsPaneOpen(string paneKey)
         {
             if (string.IsNullOrWhiteSpace(paneKey)) return false;
 
-            // 1) Check dictionary
+            // 1) Known runtime pane
             if (_panes.TryGetValue(paneKey, out var p) && p != null && IsPanePresentAnywhere(p))
                 return true;
 
-            // 2) Search docking tree / floating windows for a pane with matching serialization tag/header
+            // 2) Any canonical pane by tag/header inside docking (covers restored/saved)
             if (FindCanonicalPaneByTagOrHeader(paneKey) != null) return true;
 
-            // 3) Search all application windows just in case (floating tool windows)
+            // 3) Search all windows (floating)
             try
             {
                 foreach (Window w in Application.Current.Windows)
@@ -139,24 +175,24 @@ namespace Desktop.ImportTool.Views
             return false;
         }
 
-        // Helper - raises PaneStateChanged
+        // Raise event helper
         private void RaisePaneStateChanged(string paneKey, bool isOpen)
         {
             try
             {
-                PaneStateChanged?.Invoke(this, new PaneStateChangedEventArgs(paneKey, isOpen));
+                _lastIsOpen[paneKey] = isOpen;
             }
             catch { }
+            try { PaneStateChanged?.Invoke(this, new PaneStateChangedEventArgs(paneKey, isOpen)); } catch { }
         }
 
-        // Attach handlers to know when pane is closed/removed so we can update IsPaneOpen and raise events.
+        // Watch pane Unloaded / removed as best-effort (kept for immediate reaction)
         private void AttachCloseWatcher(RadPane pane, string paneKey)
         {
             if (pane == null || string.IsNullOrWhiteSpace(paneKey)) return;
 
             try
             {
-                // When pane gets unloaded / removed, clear stored reference and raise change
                 RoutedEventHandler unloaded = null;
                 unloaded = (s, e) =>
                 {
@@ -166,52 +202,58 @@ namespace Desktop.ImportTool.Views
                             _panes[paneKey] = null;
                     }
                     catch { }
-
                     try { RaisePaneStateChanged(paneKey, false); } catch { }
-
-                    // detach
                     try { pane.Unloaded -= unloaded; } catch { }
                 };
-
                 pane.Unloaded += unloaded;
+            }
+            catch { }
 
-                // Also watch for parent collection changes (pane removed from a group)
-                try
+            try
+            {
+                var parentGroup = pane.Parent as RadPaneGroup;
+                if (parentGroup != null && parentGroup.Items is System.Collections.Specialized.INotifyCollectionChanged items)
                 {
-                    var parentGroup = pane.Parent as RadPaneGroup;
-                    if (parentGroup != null && parentGroup.Items is System.Collections.Specialized.INotifyCollectionChanged items)
+                    System.Collections.Specialized.NotifyCollectionChangedEventHandler handler = null;
+                    handler = (s, e) =>
                     {
-                        System.Collections.Specialized.NotifyCollectionChangedEventHandler handler = null;
-                        handler = (s, e) =>
+                        if (e.Action == System.Collections.Specialized.NotifyCollectionChangedAction.Remove ||
+                            e.Action == System.Collections.Specialized.NotifyCollectionChangedAction.Replace)
                         {
-                            if (e.Action == System.Collections.Specialized.NotifyCollectionChangedAction.Remove ||
-                                e.Action == System.Collections.Specialized.NotifyCollectionChangedAction.Replace)
+                            var removed = e.OldItems?.OfType<object>().FirstOrDefault(x => object.ReferenceEquals(x, pane));
+                            if (removed != null)
                             {
-                                var removed = e.OldItems?.OfType<object>().FirstOrDefault(x => object.ReferenceEquals(x, pane));
-                                if (removed != null)
+                                try
                                 {
-                                    try
-                                    {
-                                        if (_panes.ContainsKey(paneKey) && object.ReferenceEquals(_panes[paneKey], pane))
-                                            _panes[paneKey] = null;
-                                    }
-                                    catch { }
-
-                                    try { RaisePaneStateChanged(paneKey, false); } catch { }
-
-                                    try { items.CollectionChanged -= handler; } catch { }
+                                    if (_panes.ContainsKey(paneKey) && object.ReferenceEquals(_panes[paneKey], pane))
+                                        _panes[paneKey] = null;
                                 }
+                                catch { }
+                                try { RaisePaneStateChanged(paneKey, false); } catch { }
+                                try { items.CollectionChanged -= handler; } catch { }
                             }
-                        };
-                        items.CollectionChanged += handler;
-                    }
+                        }
+                    };
+                    items.CollectionChanged += handler;
                 }
-                catch { }
             }
             catch { }
         }
 
-        // Create a new pane group at start (used when no suitable host found)
+        // Utility helpers (unchanged, robust lookups)
+
+        private RadPane CreateOrFindPaneForKey(string paneKey, object viewInstance)
+        {
+            var byContent = FindPaneByContent(viewInstance);
+            if (byContent != null) return byContent;
+            var canonical = FindCanonicalPaneByTagOrHeader(paneKey);
+            if (canonical != null) return canonical;
+            // no existing - create new
+            var pane = new RadPane { Header = paneKey, Content = viewInstance, CanUserClose = true };
+            try { RadDocking.SetSerializationTag(pane, paneKey); } catch { }
+            return pane;
+        }
+
         private RadPaneGroup CreateNewPaneGroupAtStart()
         {
             try
@@ -222,15 +264,13 @@ namespace Desktop.ImportTool.Views
                     split = new RadSplitContainer();
                     try { _docking.Items.Add(split); } catch { }
                 }
-
-                var group = new RadPaneGroup();
-                try { split.Items.Insert(0, group); } catch { try { split.Items.Add(group); } catch { } }
-                return group;
+                var created = new RadPaneGroup();
+                try { split.Items.Insert(0, created); } catch { try { split.Items.Add(created); } catch { } }
+                return created;
             }
             catch { return null; }
         }
 
-        // Move pane to preferred named group if available
         private void MovePaneToPreferredGroupIfNeeded(RadPane pane, string paneKey)
         {
             if (pane == null || string.IsNullOrWhiteSpace(paneKey)) return;
@@ -242,7 +282,6 @@ namespace Desktop.ImportTool.Views
                     preferred = _owner.FindName(paneKey + "PaneGroup") as RadPaneGroup;
                     if (preferred != null)
                     {
-                        // ensure it's part of current tree
                         if (!_docking.GetAllChildren().OfType<RadPaneGroup>().Any(g => object.ReferenceEquals(g, preferred)))
                             preferred = null;
                     }
@@ -262,7 +301,6 @@ namespace Desktop.ImportTool.Views
             catch { }
         }
 
-        // Find a canonical pane by tag/header (prefers named XAML pane in named group, then non-hidden, then any)
         private RadPane FindCanonicalPaneByTagOrHeader(string paneKey)
         {
             if (string.IsNullOrWhiteSpace(paneKey)) return null;
@@ -282,7 +320,6 @@ namespace Desktop.ImportTool.Views
 
                 if (!panes.Any()) return null;
 
-                // prefer XAML-named pane inside named group
                 try
                 {
                     var namedPane = _owner?.FindName(paneKey + "Pane") as RadPane;
@@ -303,7 +340,6 @@ namespace Desktop.ImportTool.Views
             catch { return null; }
         }
 
-        // Find pane by content inside docking pane groups only
         private RadPane FindPaneByContent(object content)
         {
             if (content == null) return null;
@@ -324,7 +360,6 @@ namespace Desktop.ImportTool.Views
             return null;
         }
 
-        // Search for a pane with matching tag/header inside a visual/logical tree rooted at root (used for floating windows)
         private RadPane FindPaneInVisualOrLogicalTree(DependencyObject root, string paneKey)
         {
             if (root == null || string.IsNullOrWhiteSpace(paneKey)) return null;
@@ -348,7 +383,6 @@ namespace Desktop.ImportTool.Views
                         catch { }
                     }
 
-                    // iterate logical children
                     try
                     {
                         foreach (var child in LogicalTreeHelper.GetChildren(node).OfType<DependencyObject>())
@@ -361,21 +395,20 @@ namespace Desktop.ImportTool.Views
             return null;
         }
 
-        // Returns true if pane exists anywhere (docked or undocked)
         private bool IsPanePresentAnywhere(RadPane pane)
         {
             if (pane == null) return false;
 
-            // If parent is a pane group that's part of docking, treat as present
             try
             {
                 var parent = pane.Parent as RadPaneGroup;
                 if (parent != null && _docking.GetAllChildren().OfType<RadPaneGroup>().Any(g => object.ReferenceEquals(g, parent)))
-                    return parent.Items.OfType<object>().Any(i => object.ReferenceEquals(i, pane));
+                {
+                    try { return parent.Items.OfType<object>().Any(i => object.ReferenceEquals(i, pane)); } catch { }
+                }
             }
             catch { }
 
-            // Otherwise search application windows
             try
             {
                 foreach (Window w in Application.Current.Windows)
@@ -386,7 +419,6 @@ namespace Desktop.ImportTool.Views
             }
             catch { }
 
-            // fallback: not found
             return false;
         }
 
@@ -417,15 +449,15 @@ namespace Desktop.ImportTool.Views
                         {
                             var tag = (RadDocking.GetSerializationTag(p) ?? p.Header)?.ToString() ?? string.Empty;
                             var hdr = (p.Header ?? string.Empty).ToString() ?? string.Empty;
-                            return string.Equals(tag, paneKey, StringComparison.OrdinalIgnoreCase) ||
-                                   string.Equals(hdr, paneKey, StringComparison.OrdinalIgnoreCase);
+                            return string.Equals(tag, paneKey, StringComparison.OrdinalIgnoreCase)
+                                || string.Equals(hdr, paneKey, StringComparison.OrdinalIgnoreCase);
                         });
                         if (has) return g;
                     }
                     catch { }
                 }
 
-                if (_lastPlacement.TryGetValue(paneKey, out var placement) && placement?.Group != null)
+                if (_lastPlacement.TryGetValue(paneKey, out var placement) && placement != null && placement.Group != null)
                 {
                     if (_docking.GetAllChildren().OfType<RadPaneGroup>().Any(g => object.ReferenceEquals(g, placement.Group)))
                         return placement.Group;
@@ -436,7 +468,17 @@ namespace Desktop.ImportTool.Views
             return _docking.GetAllChildren().OfType<RadPaneGroup>().FirstOrDefault();
         }
 
-        // Simple holder class
+        // IDisposable
+        public void Dispose()
+        {
+            try
+            {
+                _stateTimer?.Stop();
+                _stateTimer.Tick -= StateTimer_Tick;
+            }
+            catch { }
+        }
+
         private class PlacementInfo { public RadPaneGroup Group; public int Index; }
     }
 }
